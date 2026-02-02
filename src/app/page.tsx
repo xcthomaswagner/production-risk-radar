@@ -1,32 +1,35 @@
 import Link from "next/link";
 
-import { getDb } from "@/lib/db";
+import { getTwin, queryTwins } from "@/lib/azure";
 import { FactoryOverview } from "@/components/factory-overview";
-import { HeatmapGrid } from "@/components/heatmap-grid";
-import { MachineTable } from "@/components/machine-table";
-
-import type { Factory, Line, Machine } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export default function DashboardPage() {
-  const db = getDb();
+export default async function DashboardPage() {
+  const factory = await getTwin("demo-factory");
 
-  const factory = db.prepare("SELECT * FROM factory WHERE factory_id = 'demo-factory'").get() as Factory | undefined;
-  const lines = db.prepare("SELECT * FROM lines ORDER BY line_id").all() as Line[];
-  const machines = db.prepare("SELECT * FROM machines ORDER BY machine_id").all() as Machine[];
+  const lines = await queryTwins<Record<string, unknown>>(
+    "SELECT * FROM DIGITALTWINS T WHERE IS_OF_MODEL('dtmi:com:productionriskradar:Line;1')"
+  );
+
+  const machines = await queryTwins<Record<string, unknown>>(
+    "SELECT * FROM DIGITALTWINS T WHERE IS_OF_MODEL('dtmi:com:productionriskradar:Machine;1')"
+  );
 
   // KPI calculations
-  const highRiskCount = machines.filter((m) => m.risk_score > 0.7).length;
+  const highRiskCount = machines.filter((m) => (m.riskScore as number) > 0.7).length;
   const now = new Date();
   const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   const predictedFailures7d = machines.filter((m) => {
-    if (!m.predicted_failure_date) return false;
-    const failDate = new Date(m.predicted_failure_date);
-    return failDate <= sevenDaysFromNow;
+    const failDate = m.predictedFailureDate ? new Date(m.predictedFailureDate as string) : null;
+    return failDate && failDate <= sevenDaysFromNow;
   }).length;
-  const totalThroughput = lines.reduce((sum: number, l) => sum + l.throughput_forecast, 0);
-  const lineIds = lines.map((l) => l.line_id);
+  const totalThroughput = lines.reduce(
+    (sum: number, l) => sum + ((l.throughputForecast as number) || 0),
+    0
+  );
+
+  const powerBiUrl = process.env.POWER_BI_DASHBOARD_URL;
 
   return (
     <main className="min-h-screen bg-background p-6">
@@ -34,54 +37,51 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Production Risk Radar</h1>
-            <p className="text-muted-foreground">AI-Enhanced Digital Twin Dashboard — {factory?.name || "Demo Factory"}</p>
+            <p className="text-muted-foreground">AI-Enhanced Digital Twin Dashboard — {(factory?.name as string) || "Demo Factory"}</p>
           </div>
-          <Link
-            href="/control"
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            Control Panel
-          </Link>
+          <div className="flex gap-3">
+            {powerBiUrl && (
+              <a
+                href={powerBiUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                Power BI Dashboard
+              </a>
+            )}
+            <Link
+              href="/control"
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              Control Panel
+            </Link>
+          </div>
         </div>
 
         <FactoryOverview
-          factoryRisk={factory?.overall_risk_score ?? 0}
+          factoryRisk={(factory?.overallRiskScore as number) ?? 0}
           highRiskCount={highRiskCount}
           predictedFailures7d={predictedFailures7d}
           totalThroughput={totalThroughput}
         />
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div>
-            <h2 className="mb-3 text-xl font-semibold">Risk Heatmap</h2>
-            <HeatmapGrid machines={machines} lines={lineIds} />
-          </div>
-
-          <div>
-            <h2 className="mb-3 text-xl font-semibold">Line Throughput Forecast</h2>
-            <div className="space-y-3">
-              {lines.map((line) => {
-                const pct = Math.round((line.throughput_forecast / line.line_capacity) * 100);
-                const barColor = pct > 80 ? "bg-green-500" : pct > 60 ? "bg-yellow-400" : "bg-red-500";
-                return (
-                  <div key={line.line_id}>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="font-medium">{line.line_id}</span>
-                      <span>{line.throughput_forecast} / {line.line_capacity} units/day ({pct}%)</span>
-                    </div>
-                    <div className="h-4 w-full rounded-full bg-muted">
-                      <div className={`h-4 rounded-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <h2 className="mb-3 text-xl font-semibold">Machine Details</h2>
-          <MachineTable machines={machines} />
+        <div className="rounded-lg border bg-card p-6 text-card-foreground shadow-sm">
+          <h2 className="mb-2 text-xl font-semibold">Visualization</h2>
+          <p className="text-muted-foreground">
+            Detailed heatmaps, trend lines, and machine tables are available in the{" "}
+            {powerBiUrl ? (
+              <a href={powerBiUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800">
+                Power BI dashboard
+              </a>
+            ) : (
+              "Power BI dashboard"
+            )}
+            . Power BI connects directly to Azure Data Explorer via DirectQuery for near-real-time updates.
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Use the <Link href="/control" className="text-blue-600 underline hover:text-blue-800">Control Panel</Link> to inject anomalies and reset baselines. Changes propagate to Power BI automatically.
+          </p>
         </div>
       </div>
     </main>

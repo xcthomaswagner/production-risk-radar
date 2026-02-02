@@ -22,7 +22,7 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
-# SQLite database
+# Local database artifacts (legacy)
 data/*.db
 data/*.db-wal
 data/*.db-shm

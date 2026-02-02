@@ -63,3 +63,17 @@ export interface AnomalyLogEntry {
   machine_id: string | null;
   details: string;
 }
+
+export interface DigitalTwin {
+  digitalTwinsId: string;
+  $dtId: string;
+  $metadata: { $model: string };
+  [key: string]: unknown;
+}
+
+export interface TwinRelationship {
+  $relationshipId: string;
+  $sourceId: string;
+  $targetId: string;
+  $relationshipName: string;
+}

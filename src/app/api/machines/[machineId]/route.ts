@@ -1,19 +1,48 @@
 import { NextResponse } from "next/server";
 
-import { getDb } from "@/lib/db";
+import { getTwin, queryAdx } from "@/lib/azure";
+
+interface TelemetryRow {
+  machine_id: string;
+  timestamp: string;
+  temperature_c: number;
+  vibration_mm_s: number;
+  power_kw: number;
+  cycle_time_s: number;
+  risk_score: number;
+  predicted_failure_date: string;
+  throughput_forecast: number;
+  energy_deviation_kw: number;
+  is_injected: boolean;
+}
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ machineId: string }> }
 ) {
   const { machineId } = await params;
-  const db = getDb();
-  const machine = db.prepare("SELECT * FROM machines WHERE machine_id = ?").get(machineId);
-  if (!machine) {
+
+  const twin = await getTwin(machineId);
+  if (!twin) {
     return NextResponse.json({ error: "Machine not found" }, { status: 404 });
   }
-  const telemetry = db.prepare(
-    "SELECT * FROM telemetry WHERE machine_id = ? ORDER BY timestamp DESC LIMIT 24"
-  ).all(machineId);
-  return NextResponse.json({ ...machine, telemetry });
+
+  const telemetry = await queryAdx<TelemetryRow>(
+    `Telemetry | where machine_id == "${machineId}" | top 24 by timestamp desc`
+  );
+
+  return NextResponse.json({
+    machine_id: twin.$dtId,
+    line: String(twin.$dtId).split("-")[0],
+    name: twin.name,
+    status: twin.status,
+    temperature_c: twin.temperature,
+    vibration_mm_s: twin.vibration,
+    power_kw: twin.power,
+    cycle_time_s: twin.cycleTime,
+    risk_score: twin.riskScore,
+    predicted_failure_date: twin.predictedFailureDate,
+    energy_deviation_kw: twin.energyDeviation,
+    telemetry,
+  });
 }

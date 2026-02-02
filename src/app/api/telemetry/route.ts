@@ -1,24 +1,20 @@
 import { NextResponse } from "next/server";
 
-import { getDb } from "@/lib/db";
+import { queryAdx } from "@/lib/azure";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const machineId = searchParams.get("machine_id");
   const limit = parseInt(searchParams.get("limit") || "100");
 
-  const db = getDb();
-  let query = "SELECT * FROM telemetry";
-  const queryParams: (string | number)[] = [];
+  let kql = "Telemetry";
 
   if (machineId) {
-    query += " WHERE machine_id = ?";
-    queryParams.push(machineId);
+    kql += ` | where machine_id == "${machineId}"`;
   }
 
-  query += " ORDER BY timestamp DESC LIMIT ?";
-  queryParams.push(limit);
+  kql += ` | top ${limit} by timestamp desc`;
 
-  const telemetry = db.prepare(query).all(...queryParams);
+  const telemetry = await queryAdx(kql);
   return NextResponse.json(telemetry);
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getDb } from "@/lib/db";
+import { getTwin, patchTwin, queryTwins, executeAdxCommand } from "@/lib/azure";
 import {
   calculateRiskScore,
   calculatePredictedFailureDate,
@@ -18,79 +18,131 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "machine_id is required" }, { status: 400 });
   }
 
-  const db = getDb();
-
-  const machine = db.prepare("SELECT * FROM machines WHERE machine_id = ?").get(machine_id) as
-    { machine_id: string; line: string; temperature_c: number; vibration_mm_s: number; power_kw: number; cycle_time_s: number } | undefined;
+  // Step 1: Get current machine twin
+  const machine = await getTwin(machine_id);
   if (!machine) {
     return NextResponse.json({ error: "Machine not found" }, { status: 404 });
   }
 
-  // Apply overrides
-  const newTemp = temperature_c ?? machine.temperature_c;
-  const newVib = vibration_mm_s ?? machine.vibration_mm_s;
-  const newPower = power_kw ?? machine.power_kw;
-  const newCycle = cycle_time_s ?? machine.cycle_time_s;
+  // Step 2: Apply overrides (use incoming values or keep existing)
+  const newTemp = temperature_c ?? machine.temperature;
+  const newVib = vibration_mm_s ?? machine.vibration;
+  const newPower = power_kw ?? machine.power;
+  const newCycle = cycle_time_s ?? machine.cycleTime;
 
-  // Recalculate
+  // Step 3: Recalculate via scoring engine
   const riskScore = calculateRiskScore({
-    temperature_c: newTemp,
-    vibration_mm_s: newVib,
-    power_kw: newPower,
-    cycle_time_s: newCycle,
+    temperature_c: newTemp as number,
+    vibration_mm_s: newVib as number,
+    power_kw: newPower as number,
+    cycle_time_s: newCycle as number,
   });
   const predictedFailureDate = calculatePredictedFailureDate(riskScore);
-  const energyDeviation = calculateEnergyDeviation(newPower);
+  const energyDeviation = calculateEnergyDeviation(newPower as number);
   const status = riskScore > 0.7 ? "Warning" : "Running";
 
-  // Transaction for atomic update
-  const inject = db.transaction(() => {
-    // Update machine
-    db.prepare(
-      `UPDATE machines SET
-        temperature_c = ?, vibration_mm_s = ?, power_kw = ?, cycle_time_s = ?,
-        risk_score = ?, predicted_failure_date = ?, energy_deviation_kw = ?, status = ?
-      WHERE machine_id = ?`
-    ).run(newTemp, newVib, newPower, newCycle, riskScore, predictedFailureDate, energyDeviation, status, machine_id);
+  // Step 4: Patch machine twin in ADT
+  await patchTwin(machine_id, [
+    { op: "replace", path: "/temperature", value: newTemp },
+    { op: "replace", path: "/vibration", value: newVib },
+    { op: "replace", path: "/power", value: newPower },
+    { op: "replace", path: "/cycleTime", value: newCycle },
+    { op: "replace", path: "/riskScore", value: riskScore },
+    { op: "replace", path: "/predictedFailureDate", value: predictedFailureDate },
+    { op: "replace", path: "/energyDeviation", value: energyDeviation },
+    { op: "replace", path: "/status", value: status },
+  ]);
 
-    // Insert telemetry
-    const timestamp = new Date().toISOString();
-    db.prepare(
-      `INSERT INTO telemetry (machine_id, timestamp, temperature_c, vibration_mm_s, power_kw, cycle_time_s, risk_score, predicted_failure_date, throughput_forecast, energy_deviation_kw, is_injected)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
-    ).run(machine_id, timestamp, newTemp, newVib, newPower, newCycle, riskScore, predictedFailureDate, 0, energyDeviation);
+  // Step 5: Insert telemetry row to ADX via .set-or-append (immediately queryable)
+  const timestamp = new Date().toISOString();
+  const lineId = String(machine_id).split("-")[0];
 
-    // Recalculate line
-    const lineMachines = db.prepare(
-      "SELECT risk_score FROM machines WHERE line = ?"
-    ).all(machine.line) as { risk_score: number }[];
-    const lineRisks = lineMachines.map(m => m.risk_score);
-    const lineRiskScore = calculateLineRiskScore(lineRisks);
-    const throughput = calculateLineThroughput(lineRisks);
-    db.prepare("UPDATE lines SET risk_score = ?, throughput_forecast = ? WHERE line_id = ?")
-      .run(lineRiskScore, throughput, machine.line);
+  // Retry once on ADX insert failure
+  let adxWarning: string | undefined;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await executeAdxCommand(
+        `.set-or-append Telemetry <| print machine_id="${machine_id}", timestamp=datetime("${timestamp}"), temperature_c=${newTemp}, vibration_mm_s=${newVib}, power_kw=${newPower}, cycle_time_s=${newCycle}, risk_score=${riskScore}, predicted_failure_date=datetime("${predictedFailureDate}"), throughput_forecast=0.0, energy_deviation_kw=${energyDeviation}, is_injected=true`
+      );
+      adxWarning = undefined;
+      break;
+    } catch {
+      if (attempt === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      } else {
+        adxWarning = "ADX telemetry insert failed after retry. Twin was updated successfully.";
+      }
+    }
+  }
 
-    // Update telemetry throughput
-    db.prepare("UPDATE telemetry SET throughput_forecast = ? WHERE machine_id = ? AND timestamp = ?")
-      .run(throughput, machine_id, timestamp);
+  // Step 6: Recalculate line aggregates
+  const lineMachines = await queryTwins<Record<string, unknown>>(
+    `SELECT * FROM DIGITALTWINS T WHERE IS_OF_MODEL('dtmi:com:productionriskradar:Machine;1') AND STARTSWITH(T.$dtId, '${lineId}-')`
+  );
+  const lineRisks = lineMachines.map((m) => m.riskScore as number);
+  const lineRiskScore = calculateLineRiskScore(lineRisks);
+  const throughput = calculateLineThroughput(lineRisks);
 
-    // Recalculate factory
-    const allLines = db.prepare("SELECT risk_score FROM lines").all() as { risk_score: number }[];
-    const factoryRisk = calculateFactoryRiskScore(allLines.map(l => l.risk_score));
-    db.prepare("UPDATE factory SET overall_risk_score = ? WHERE factory_id = 'demo-factory'")
-      .run(factoryRisk);
+  await patchTwin(lineId, [
+    { op: "replace", path: "/riskScore", value: lineRiskScore },
+    { op: "replace", path: "/throughputForecast", value: throughput },
+    { op: "replace", path: "/currentThroughput", value: throughput },
+  ]);
 
-    // Log
-    db.prepare("INSERT INTO anomaly_log (action, machine_id, details) VALUES (?, ?, ?)")
-      .run("inject", machine_id, JSON.stringify({ temperature_c: newTemp, vibration_mm_s: newVib, power_kw: newPower, cycle_time_s: newCycle, risk_score: riskScore }));
-  });
+  // Update the telemetry throughput in ADX if insert succeeded
+  if (!adxWarning) {
+    try {
+      await executeAdxCommand(
+        `.set-or-replace Telemetry <| Telemetry | where machine_id == "${machine_id}" and timestamp == datetime("${timestamp}") | extend throughput_forecast = ${throughput}`
+      );
+    } catch {
+      // Non-critical: throughput in telemetry row is for historical reference only
+    }
+  }
 
-  inject();
+  // Step 7: Recalculate factory aggregate
+  const allLines = await queryTwins<Record<string, unknown>>(
+    "SELECT * FROM DIGITALTWINS T WHERE IS_OF_MODEL('dtmi:com:productionriskradar:Line;1')"
+  );
+  const factoryRisk = calculateFactoryRiskScore(allLines.map((l) => l.riskScore as number));
 
-  // Return updated state
-  const updated = db.prepare("SELECT * FROM machines WHERE machine_id = ?").get(machine_id);
-  const line = db.prepare("SELECT * FROM lines WHERE line_id = ?").get(machine.line);
-  const factory = db.prepare("SELECT * FROM factory WHERE factory_id = 'demo-factory'").get();
+  await patchTwin("demo-factory", [
+    { op: "replace", path: "/overallRiskScore", value: factoryRisk },
+  ]);
 
-  return NextResponse.json({ machine: updated, line, factory });
+  // Step 8: Return updated state in snake_case
+  const response: Record<string, unknown> = {
+    machine: {
+      machine_id,
+      line: lineId,
+      name: machine.name,
+      status,
+      temperature_c: newTemp,
+      vibration_mm_s: newVib,
+      power_kw: newPower,
+      cycle_time_s: newCycle,
+      risk_score: riskScore,
+      predicted_failure_date: predictedFailureDate,
+      energy_deviation_kw: energyDeviation,
+    },
+    line: {
+      line_id: lineId,
+      name: lineId,
+      line_capacity: 480,
+      risk_score: lineRiskScore,
+      throughput_forecast: throughput,
+      oee: 0.85,
+    },
+    factory: {
+      factory_id: "demo-factory",
+      name: "Demo Factory",
+      overall_risk_score: factoryRisk,
+    },
+  };
+
+  if (adxWarning) {
+    response.warning = adxWarning;
+  }
+
+  return NextResponse.json(response);
 }
