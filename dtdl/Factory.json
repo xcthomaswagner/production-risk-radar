@@ -1,0 +1,34 @@
+{
+  "@id": "dtmi:com:productionriskradar:Factory;1",
+  "@type": "Interface",
+  "@context": "dtmi:dtdl:context;2",
+  "displayName": "Factory",
+  "description": "Top-level factory twin representing the entire manufacturing facility",
+  "contents": [
+    {
+      "@type": "Property",
+      "name": "name",
+      "schema": "string",
+      "displayName": "Factory Name"
+    },
+    {
+      "@type": "Property",
+      "name": "location",
+      "schema": "string",
+      "displayName": "Location"
+    },
+    {
+      "@type": "Property",
+      "name": "overallRiskScore",
+      "schema": "double",
+      "displayName": "Overall Risk Score",
+      "description": "Aggregated predicted risk score (0-1)"
+    },
+    {
+      "@type": "Relationship",
+      "name": "hasLines",
+      "target": "dtmi:com:productionriskradar:Line;1",
+      "displayName": "Has Lines"
+    }
+  ]
+}

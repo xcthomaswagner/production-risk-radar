@@ -1,0 +1,113 @@
+{
+  "@id": "dtmi:com:productionriskradar:Machine;1",
+  "@type": "Interface",
+  "@context": "dtmi:dtdl:context;2",
+  "displayName": "Machine",
+  "description": "An individual machine on a production line with sensor readings and AI predictions",
+  "contents": [
+    {
+      "@type": "Property",
+      "name": "name",
+      "schema": "string",
+      "displayName": "Machine Name"
+    },
+    {
+      "@type": "Property",
+      "name": "machineType",
+      "schema": "string",
+      "displayName": "Machine Type"
+    },
+    {
+      "@type": "Property",
+      "name": "status",
+      "schema": {
+        "@type": "Enum",
+        "valueSchema": "string",
+        "enumValues": [
+          { "name": "Running", "enumValue": "Running" },
+          { "name": "Warning", "enumValue": "Warning" },
+          { "name": "Down", "enumValue": "Down" },
+          { "name": "Maintenance", "enumValue": "Maintenance" }
+        ]
+      },
+      "displayName": "Status"
+    },
+    {
+      "@type": ["Property", "Temperature"],
+      "name": "temperature",
+      "schema": "double",
+      "unit": "degreeCelsius",
+      "displayName": "Temperature (°C)"
+    },
+    {
+      "@type": "Property",
+      "name": "vibration",
+      "schema": "double",
+      "displayName": "Vibration (mm/s)"
+    },
+    {
+      "@type": ["Property", "Power"],
+      "name": "power",
+      "schema": "double",
+      "unit": "kilowatt",
+      "displayName": "Power (kW)"
+    },
+    {
+      "@type": "Property",
+      "name": "cycleTime",
+      "schema": "double",
+      "displayName": "Cycle Time (s)"
+    },
+    {
+      "@type": "Property",
+      "name": "lastMaintenanceDate",
+      "schema": "dateTime",
+      "displayName": "Last Maintenance Date"
+    },
+    {
+      "@type": "Property",
+      "name": "riskScore",
+      "schema": "double",
+      "displayName": "Risk Score",
+      "description": "AI-predicted probability of failure (0-1)"
+    },
+    {
+      "@type": "Property",
+      "name": "predictedFailureDate",
+      "schema": "dateTime",
+      "displayName": "Predicted Failure Date",
+      "description": "AI-forecasted maintenance or downtime date"
+    },
+    {
+      "@type": "Property",
+      "name": "energyDeviation",
+      "schema": "double",
+      "displayName": "Energy Deviation (kW)",
+      "description": "Actual vs expected energy usage anomaly"
+    },
+    {
+      "@type": "Telemetry",
+      "name": "temperatureReading",
+      "schema": "double",
+      "displayName": "Temperature Reading"
+    },
+    {
+      "@type": "Telemetry",
+      "name": "vibrationReading",
+      "schema": "double",
+      "displayName": "Vibration Reading"
+    },
+    {
+      "@type": "Telemetry",
+      "name": "powerReading",
+      "schema": "double",
+      "displayName": "Power Reading"
+    },
+    {
+      "@type": "Relationship",
+      "name": "partOf",
+      "target": "dtmi:com:productionriskradar:Line;1",
+      "displayName": "Part Of Line"
+    }
+  ]
+}

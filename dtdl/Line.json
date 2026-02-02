@@ -1,0 +1,54 @@
+{
+  "@id": "dtmi:com:productionriskradar:Line;1",
+  "@type": "Interface",
+  "@context": "dtmi:dtdl:context;2",
+  "displayName": "Production Line",
+  "description": "A production line containing multiple machines",
+  "contents": [
+    {
+      "@type": "Property",
+      "name": "name",
+      "schema": "string",
+      "displayName": "Line Name"
+    },
+    {
+      "@type": "Property",
+      "name": "lineCapacity",
+      "schema": "double",
+      "displayName": "Line Capacity (units/day)"
+    },
+    {
+      "@type": "Property",
+      "name": "oee",
+      "schema": "double",
+      "displayName": "Overall Equipment Effectiveness",
+      "description": "OEE metric (0-1)"
+    },
+    {
+      "@type": "Property",
+      "name": "currentThroughput",
+      "schema": "double",
+      "displayName": "Current Throughput (units/day)"
+    },
+    {
+      "@type": "Property",
+      "name": "riskScore",
+      "schema": "double",
+      "displayName": "Risk Score",
+      "description": "Aggregated risk score for the line (0-1)"
+    },
+    {
+      "@type": "Property",
+      "name": "throughputForecast",
+      "schema": "double",
+      "displayName": "Throughput Forecast (units/day)",
+      "description": "AI-predicted production capacity"
+    },
+    {
+      "@type": "Relationship",
+      "name": "hasMachines",
+      "target": "dtmi:com:productionriskradar:Machine;1",
+      "displayName": "Has Machines"
+    }
+  ]
+}
