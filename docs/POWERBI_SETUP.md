@@ -20,7 +20,7 @@ Alternatively, download from https://powerbi.microsoft.com/desktop/
 2. Click **Get Data** on the Home ribbon
 3. Search for **"Azure Data Explorer (Kusto)"** and select it
 4. Enter:
-   - **Cluster URL:** `https://adxprodriskradar.eastus.kusto.windows.net`
+   - **Cluster URL:** `https://adxprodradarw.westus2.kusto.windows.net`
    - **Database:** `productionriskradar`
 5. Select **DirectQuery** mode (not Import)
 6. Sign in with your Azure credentials when prompted
@@ -129,7 +129,7 @@ No manual refresh needed — DirectQuery with page auto-refresh handles it autom
 The Dev/Test cluster can be stopped to save costs. Start it:
 
 ```bash
-az kusto cluster start --cluster-name adxprodriskradar --resource-group rg-production-risk-radar
+az kusto cluster start --cluster-name adxprodradarw --resource-group rg-production-risk-radar
 ```
 
 Wait 5-10 minutes for the cluster to warm up.
@@ -140,7 +140,7 @@ Ensure your Azure account has at least **Database Viewer** permission on the ADX
 
 ```bash
 az kusto database-principal-assignment create \
-  --cluster-name adxprodriskradar --resource-group rg-production-risk-radar \
+  --cluster-name adxprodradarw --resource-group rg-production-risk-radar \
   --database-name productionriskradar \
   --principal-assignment-name "user-viewer" \
   --principal-id <your-azure-ad-object-id> \

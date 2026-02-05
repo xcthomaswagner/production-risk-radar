@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getTwin, queryAdx } from "@/lib/azure";
+import { MACHINE_ID_PATTERN } from "@/lib/constants";
 
 interface TelemetryRow {
   machine_id: string;
@@ -20,29 +21,45 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ machineId: string }> }
 ) {
-  const { machineId } = await params;
+  try {
+    const { machineId } = await params;
 
-  const twin = await getTwin(machineId);
-  if (!twin) {
-    return NextResponse.json({ error: "Machine not found" }, { status: 404 });
+    // Validate machineId format
+    if (!MACHINE_ID_PATTERN.test(machineId)) {
+      return NextResponse.json(
+        { error: "Invalid machine ID format. Expected L{1-3}-M{1-5}" },
+        { status: 400 }
+      );
+    }
+
+    const twin = await getTwin(machineId);
+    if (!twin) {
+      return NextResponse.json({ error: "Machine not found" }, { status: 404 });
+    }
+
+    const telemetry = await queryAdx<TelemetryRow>(
+      `Telemetry | where machine_id == "${machineId}" | top 24 by timestamp desc`
+    );
+
+    return NextResponse.json({
+      machine_id: twin.$dtId,
+      line: String(twin.$dtId).split("-")[0],
+      name: twin.name,
+      status: twin.status,
+      temperature_c: twin.temperature,
+      vibration_mm_s: twin.vibration,
+      power_kw: twin.power,
+      cycle_time_s: twin.cycleTime,
+      risk_score: twin.riskScore,
+      predicted_failure_date: twin.predictedFailureDate,
+      energy_deviation_kw: twin.energyDeviation,
+      telemetry,
+    });
+  } catch (err) {
+    console.error("Machine detail API error:", err);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
-
-  const telemetry = await queryAdx<TelemetryRow>(
-    `Telemetry | where machine_id == "${machineId}" | top 24 by timestamp desc`
-  );
-
-  return NextResponse.json({
-    machine_id: twin.$dtId,
-    line: String(twin.$dtId).split("-")[0],
-    name: twin.name,
-    status: twin.status,
-    temperature_c: twin.temperature,
-    vibration_mm_s: twin.vibration,
-    power_kw: twin.power,
-    cycle_time_s: twin.cycleTime,
-    risk_score: twin.riskScore,
-    predicted_failure_date: twin.predictedFailureDate,
-    energy_deviation_kw: twin.energyDeviation,
-    telemetry,
-  });
 }

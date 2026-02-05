@@ -21,12 +21,20 @@ export default function ControlPage() {
             <h1 className="text-3xl font-bold tracking-tight">Demo Control Panel</h1>
             <p className="text-muted-foreground">Inject anomalies, reset machines, control the demo</p>
           </div>
-          <Link
-            href="/"
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            View Dashboard
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/help"
+              className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+            >
+              How It Works
+            </Link>
+            <Link
+              href="/"
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              View Dashboard
+            </Link>
+          </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">

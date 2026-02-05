@@ -139,13 +139,13 @@ export function AnomalyControls({ onInject }: AnomalyControlsProps) {
             <Button
               key={preset.name}
               variant="outline"
-              className="w-full justify-start"
+              className="w-full justify-start h-auto py-3"
               disabled={loading}
               onClick={() => injectPreset(preset)}
             >
-              <div className="text-left">
+              <div className="text-left min-w-0 flex-1">
                 <div className="font-semibold">{preset.name}</div>
-                <div className="text-xs text-muted-foreground">{preset.description}</div>
+                <div className="text-xs text-muted-foreground whitespace-normal">{preset.description}</div>
               </div>
             </Button>
           ))}

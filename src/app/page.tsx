@@ -2,11 +2,12 @@ import Link from "next/link";
 
 import { getTwin, queryTwins } from "@/lib/azure";
 import { FactoryOverview } from "@/components/factory-overview";
+import { FACTORY_ID, HIGH_RISK_THRESHOLD } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const factory = await getTwin("demo-factory");
+  const factory = await getTwin(FACTORY_ID);
 
   const lines = await queryTwins<Record<string, unknown>>(
     "SELECT * FROM DIGITALTWINS T WHERE IS_OF_MODEL('dtmi:com:productionriskradar:Line;1')"
@@ -17,7 +18,7 @@ export default async function DashboardPage() {
   );
 
   // KPI calculations
-  const highRiskCount = machines.filter((m) => (m.riskScore as number) > 0.7).length;
+  const highRiskCount = machines.filter((m) => (m.riskScore as number) > HIGH_RISK_THRESHOLD).length;
   const now = new Date();
   const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   const predictedFailures7d = machines.filter((m) => {

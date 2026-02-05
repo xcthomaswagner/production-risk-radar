@@ -12,10 +12,15 @@ function requireEnv(name: string): string {
   return value;
 }
 
-// --- Singletons ---
+// --- Singletons (using globalThis to survive Next.js hot reload in dev) ---
 
-let adtClient: DigitalTwinsClient | null = null;
-let adxClient: KustoClient | null = null;
+const globalForAzure = globalThis as unknown as {
+  adtClient: DigitalTwinsClient | null;
+  adxClient: KustoClient | null;
+};
+
+globalForAzure.adtClient = globalForAzure.adtClient ?? null;
+globalForAzure.adxClient = globalForAzure.adxClient ?? null;
 
 function getCredential(): ClientSecretCredential {
   return new ClientSecretCredential(
@@ -26,26 +31,26 @@ function getCredential(): ClientSecretCredential {
 }
 
 export function getAdtClient(): DigitalTwinsClient {
-  if (!adtClient) {
-    adtClient = new DigitalTwinsClient(
+  if (!globalForAzure.adtClient) {
+    globalForAzure.adtClient = new DigitalTwinsClient(
       requireEnv("ADT_INSTANCE_URL"),
       getCredential()
     );
   }
-  return adtClient;
+  return globalForAzure.adtClient;
 }
 
 export function getAdxClient(): KustoClient {
-  if (!adxClient) {
+  if (!globalForAzure.adxClient) {
     const kcsb = KustoConnectionStringBuilder.withAadApplicationKeyAuthentication(
       requireEnv("ADX_CLUSTER_URL"),
       requireEnv("AZURE_CLIENT_ID"),
       requireEnv("AZURE_CLIENT_SECRET"),
       requireEnv("AZURE_TENANT_ID")
     );
-    adxClient = new KustoClient(kcsb);
+    globalForAzure.adxClient = new KustoClient(kcsb);
   }
-  return adxClient;
+  return globalForAzure.adxClient;
 }
 
 export const ADX_DATABASE = process.env.ADX_DATABASE || "productionriskradar";
